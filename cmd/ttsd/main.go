@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+    "strings"
 	"path/filepath"
 	"strconv"
 	"syscall"
@@ -45,6 +46,14 @@ func main() {
 	maxChars := envInt("TTS_MAX_CHARS", 0) // 0 = unlimited; set a positive number to cap each fragment
 	synthWorkers := envInt("TTS_SYNTH_WORKERS", 2)
 	queueSize := envInt("TTS_QUEUE_SIZE", 50)
+	var sessions []string
+	if v := os.Getenv("TTS_SESSIONS"); v != "" {
+		for _, s := range strings.Split(v, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				sessions = append(sessions, s)
+			}
+		}
+	}
 
 	rolloutDir := os.Getenv("TTS_ROLLOUT_DIR")
 	if rolloutDir == "" {
@@ -79,6 +88,7 @@ func main() {
 		Dir:       rolloutDir,
 		PollEvery: poll,
 		MaxChars:  maxChars,
+		Sessions:  sessions,
 		SpokenFilter: func(requestID string) bool {
 			return spoken.has(requestID)
 		},

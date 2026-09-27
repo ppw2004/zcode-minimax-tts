@@ -47,6 +47,10 @@ type Options struct {
 	// spoken (according to the caller's persistent record). Applied to
 	// adopted lines AND live appends, so a restart never repeats audio.
 	SpokenFilter func(requestID string) bool
+
+	// Sessions, when non-empty, restricts speech to these session IDs only
+	// (TTS_SESSIONS env, comma-separated). Empty = speak every session.
+	Sessions []string
 }
 
 var (
@@ -308,6 +312,23 @@ func (w *Watcher) parseLine(raw, path string) (Line, bool) {
 	}
 	if rl.Type != "model_io" {
 		return Line{}, false
+	}
+	// Lines without a session ID are internal tool model calls (e.g. the
+	// web-reader's summarizer), not assistant replies — never speak them.
+	if rl.SessionID == "" {
+		return Line{}, false
+	}
+	if len(w.opt.Sessions) > 0 {
+		allowed := false
+		for _, s := range w.opt.Sessions {
+			if s == rl.SessionID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return Line{}, false
+		}
 	}
 	if w.opt.SpokenFilter != nil && w.opt.SpokenFilter(rl.RequestID) {
 		// Already spoken in a previous daemon life; never repeat audio.
