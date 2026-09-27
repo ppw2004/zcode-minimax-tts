@@ -44,6 +44,36 @@ type Client struct {
 	model      string
 }
 
+// Name implements Provider.
+func (c *Client) Name() string { return "openai" }
+
+// DefaultVoice implements Provider.
+func (c *Client) DefaultVoice() string { return string(VoiceAlloy) }
+
+// Voices implements Provider.
+func (c *Client) Voices() []string {
+	out := make([]string, 0, len(ValidVoices()))
+	for _, v := range ValidVoices() {
+		out = append(out, string(v))
+	}
+	return out
+}
+
+// IsValidVoice implements Provider.
+func (c *Client) IsValidVoice(v string) bool { return IsValidVoice(v) }
+
+// SynthesizeAudio implements Provider.
+func (c *Client) SynthesizeAudio(text, voice string) (AudioResult, error) {
+	if c.apiKey == "" {
+		return AudioResult{}, fmt.Errorf("OPENAI_API_KEY environment variable is required")
+	}
+	data, err := c.Synthesize(text, Voice(voice))
+	if err != nil {
+		return AudioResult{}, err
+	}
+	return AudioResult{Data: data, Format: FormatMP3}, nil
+}
+
 // NewClient creates a new TTS client
 func NewClient() *Client {
 	return &Client{

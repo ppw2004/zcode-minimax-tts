@@ -11,7 +11,7 @@ func TestNewPlayer(t *testing.T) {
 	if player == nil {
 		t.Fatal("expected player to be created")
 	}
-	if player.isPlaying {
+	if player.isPlaying.Load() {
 		t.Error("expected isPlaying to be false initially")
 	}
 }
@@ -69,7 +69,7 @@ func TestPlayer_MutexProtection(t *testing.T) {
 	// Verify mutex is properly initialized and can be used
 	player.mu.Lock()
 	// Simulate checking a protected resource
-	wasPlaying := player.isPlaying
+	wasPlaying := player.isPlaying.Load()
 	player.mu.Unlock()
 
 	if wasPlaying {
@@ -82,7 +82,7 @@ func TestPlayer_PlaySetsIsPlaying(t *testing.T) {
 
 	// We can't easily test actual playback without audio files,
 	// but we can verify the structure is correct
-	if player.isPlaying {
+	if player.isPlaying.Load() {
 		t.Error("isPlaying should be false before Play()")
 	}
 }
@@ -136,7 +136,7 @@ func TestNewPlayer_TableDriven(t *testing.T) {
 			if player == nil {
 				t.Fatal("expected player to be created")
 			}
-			if player.isPlaying {
+			if player.isPlaying.Load() {
 				t.Error("expected isPlaying to be false initially")
 			}
 			// Verify mutex is initialized (can be locked)
@@ -306,14 +306,14 @@ func TestPlayer_StructureInitialization(t *testing.T) {
 	}
 
 	// isPlaying should be false
-	if player.isPlaying {
+	if player.isPlaying.Load() {
 		t.Error("isPlaying field should be false initially")
 	}
 
 	// Mutex should be usable
 	player.mu.Lock()
-	player.isPlaying = true
-	playing := player.isPlaying
+	player.isPlaying.Store(true)
+	playing := player.isPlaying.Load()
 	player.mu.Unlock()
 
 	if !playing {

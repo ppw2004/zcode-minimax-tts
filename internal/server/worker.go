@@ -24,7 +24,7 @@ type Job struct {
 
 // WorkerPool manages TTS job processing
 type WorkerPool struct {
-	ttsClient   *tts.Client
+	ttsClient   tts.Provider
 	audioPlayer *audio.Player
 	jobs        chan *Job
 	jobHistory  []*Job
@@ -40,8 +40,15 @@ type WorkerPool struct {
 
 // NewWorkerPool creates a new worker pool
 func NewWorkerPool(workerCount, queueSize int) *WorkerPool {
+	provider, err := tts.NewProvider()
+	if err != nil {
+		// NewProvider only fails on a misconfigured TTS_PROVIDER value;
+		// fall back to the OpenAI default so the pool still works.
+		logging.Warn("NewProvider: %v, falling back to openai", err)
+		provider = tts.NewClient()
+	}
 	return &WorkerPool{
-		ttsClient:   tts.NewClient(),
+		ttsClient:   provider,
 		audioPlayer: audio.NewPlayer(),
 		jobs:        make(chan *Job, queueSize),
 		jobHistory:  make([]*Job, 0),
@@ -110,8 +117,8 @@ func (wp *WorkerPool) processJob(job *Job) {
 	job.mu.Unlock()
 
 	// Synthesize audio
-	logging.Debug("Job %s: calling OpenAI TTS API...", job.ID)
-	audioData, err := wp.ttsClient.Synthesize(job.Text, job.Voice)
+	logging.Debug("Job %s: calling %s TTS API...", job.ID, wp.ttsClient.Name())
+	result, err := wp.ttsClient.SynthesizeAudio(job.Text, string(job.Voice))
 	if err != nil {
 		job.mu.Lock()
 		job.Status = "failed"
@@ -121,11 +128,11 @@ func (wp *WorkerPool) processJob(job *Job) {
 		logging.Error("Job %s: TTS synthesis failed after %v: %v", job.ID, time.Since(startTime), err)
 		return
 	}
-	logging.Debug("Job %s: received %d bytes of audio", job.ID, len(audioData))
+	logging.Debug("Job %s: received %d bytes of audio (%s)", job.ID, len(result.Data), result.Format)
 
 	// Play audio (mutex protected - only one plays at a time)
 	logging.Debug("Job %s: starting audio playback...", job.ID)
-	if err := wp.audioPlayer.Play(audioData); err != nil {
+	if err := wp.audioPlayer.Play(result.Data); err != nil {
 		job.mu.Lock()
 		job.Status = "failed"
 		job.Error = err.Error()

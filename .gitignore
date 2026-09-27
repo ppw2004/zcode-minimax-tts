@@ -31,6 +31,13 @@ go.work
 *.tmp
 *.temp
 *.mp3
+*.wav
+
+# ttsd runtime state (spoken-requestId persistence, machine-local)
+ttsd-spoken.jsonl
+
+# Logs
+*.log
 
 # Local MCP config (user-specific)
 .mcp.json

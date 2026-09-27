@@ -25,11 +25,24 @@ func main() {
 	logging.Info("Log file: %s", logging.GetLogPath())
 	logging.Info("========================================")
 
-	// Check for required environment variable
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		logging.Fatal("OPENAI_API_KEY environment variable is required")
+	// Resolve and validate the TTS provider
+	provider, err := server.ResolveProvider()
+	if err != nil {
+		logging.Fatal("Failed to resolve TTS provider: %v", err)
 	}
-	logging.Info("OPENAI_API_KEY is set (length: %d)", len(os.Getenv("OPENAI_API_KEY")))
+	logging.Info("TTS provider: %s", provider.Name())
+	switch provider.Name() {
+	case "minimax":
+		if os.Getenv("MINIMAX_API_KEY") == "" {
+			logging.Fatal("MINIMAX_API_KEY environment variable is required (set TTS_PROVIDER=openai to use OpenAI instead)")
+		}
+		logging.Info("MINIMAX_API_KEY is set (length: %d)", len(os.Getenv("MINIMAX_API_KEY")))
+	default:
+		if os.Getenv("OPENAI_API_KEY") == "" {
+			logging.Fatal("OPENAI_API_KEY environment variable is required (set TTS_PROVIDER=minimax with MINIMAX_API_KEY to use MiniMax instead)")
+		}
+		logging.Info("OPENAI_API_KEY is set (length: %d)", len(os.Getenv("OPENAI_API_KEY")))
+	}
 
 	// Create and start the MCP server
 	srv, err := server.New()

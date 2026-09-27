@@ -6,6 +6,11 @@
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/claude-code-tts}"
 SPEAK_BIN="$PLUGIN_ROOT/bin/speak-text"
 
+# On Windows, defer to hooks/auto-speak.ps1 so the response is only spoken once
+case "$(uname -s 2>/dev/null)" in
+    *MINGW*|*MSYS*|*CYGWIN*) exit 0 ;;
+esac
+
 # Read JSON from stdin, extract message, get first sentence, speak it
 {
     json=$(cat)

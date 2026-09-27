@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ybouhjira/claude-code-tts/internal/audio"
 	"github.com/ybouhjira/claude-code-tts/internal/tts"
@@ -11,15 +12,17 @@ import (
 
 func main() {
 	// Parse flags
-	voice := flag.String("voice", "nova", "Voice to use (alloy, echo, fable, onyx, nova, shimmer)")
+	voice := flag.String("voice", "", fmt.Sprintf("Voice to use (provider-specific; default: %s for OpenAI, %s for MiniMax)", "alloy", "female-shaonv"))
+	providerName := flag.String("provider", "", "TTS provider to use: openai or minimax (overrides TTS_PROVIDER env)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] TEXT\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Converts text to speech using OpenAI TTS API and plays it.\n\n")
+		fmt.Fprintf(os.Stderr, "Converts text to speech and plays it. Provider is selected via TTS_PROVIDER\n")
+		fmt.Fprintf(os.Stderr, "(or auto-detected from OPENAI_API_KEY / MINIMAX_API_KEY).\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
 		fmt.Fprintf(os.Stderr, "  %s \"Build completed\"\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -voice onyx \"Error occurred\"\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  TTS_PROVIDER=minimax MINIMAX_API_KEY=... %s -voice presenter_female \"任务完成\"\n", os.Args[0])
 	}
 	flag.Parse()
 
@@ -31,30 +34,44 @@ func main() {
 
 	text := flag.Arg(0)
 
-	// Validate environment
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		fmt.Fprintf(os.Stderr, "Error: OPENAI_API_KEY environment variable is required\n")
+	// -provider flag overrides the environment
+	if *providerName != "" {
+		os.Setenv("TTS_PROVIDER", *providerName)
+	}
+
+	provider, err := tts.NewProvider()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Validate environment for the selected provider
+	switch provider.Name() {
+	case "minimax":
+		if os.Getenv("MINIMAX_API_KEY") == "" {
+			fmt.Fprintf(os.Stderr, "Error: MINIMAX_API_KEY environment variable is required\n")
+			os.Exit(1)
+		}
+	default:
+		if os.Getenv("OPENAI_API_KEY") == "" {
+			fmt.Fprintf(os.Stderr, "Error: OPENAI_API_KEY environment variable is required\n")
+			os.Exit(1)
+		}
+	}
+
+	// Default voice comes from the provider
+	if *voice == "" {
+		*voice = provider.DefaultVoice()
 	}
 
 	// Validate voice
-	if !tts.IsValidVoice(*voice) {
-		fmt.Fprintf(os.Stderr, "Error: invalid voice '%s'. Valid voices: ", *voice)
-		for i, v := range tts.ValidVoices() {
-			if i > 0 {
-				fmt.Fprintf(os.Stderr, ", ")
-			}
-			fmt.Fprintf(os.Stderr, "%s", v)
-		}
-		fmt.Fprintf(os.Stderr, "\n")
+	if !provider.IsValidVoice(*voice) {
+		fmt.Fprintf(os.Stderr, "Error: invalid voice '%s'. Valid voices: %s\n", *voice, strings.Join(provider.Voices(), ", "))
 		os.Exit(1)
 	}
 
-	// Create TTS client
-	client := tts.NewClient()
-
 	// Synthesize speech
-	audioData, err := client.Synthesize(text, tts.Voice(*voice))
+	result, err := provider.SynthesizeAudio(text, *voice)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error synthesizing speech: %v\n", err)
 		os.Exit(1)
@@ -62,7 +79,7 @@ func main() {
 
 	// Play audio
 	player := audio.NewPlayer()
-	if err := player.Play(audioData); err != nil {
+	if err := player.Play(result.Data); err != nil {
 		fmt.Fprintf(os.Stderr, "Error playing audio: %v\n", err)
 		os.Exit(1)
 	}

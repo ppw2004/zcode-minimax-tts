@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -15,6 +16,12 @@ import (
 type Server struct {
 	mcpServer  *server.MCPServer
 	workerPool *WorkerPool
+}
+
+// ResolveProvider returns the configured TTS provider (from TTS_PROVIDER /
+// API key auto-detection). Exported so entrypoints can validate keys at startup.
+func ResolveProvider() (tts.Provider, error) {
+	return tts.NewProvider()
 }
 
 // New creates a new TTS MCP server
@@ -48,15 +55,18 @@ func New() (*Server, error) {
 
 // registerTools adds the TTS tools to the MCP server
 func (s *Server) registerTools() {
+	voices := s.workerPool.ttsClient.Voices()
+	voiceList := strings.Join(voices, ", ")
+
 	// speak tool - converts text to speech
 	speakTool := mcp.NewTool("speak",
-		mcp.WithDescription("Convert text to speech and play it aloud. Use this to provide audio feedback to the user."),
+		mcp.WithDescription(fmt.Sprintf("Convert text to speech and play it aloud using the %s TTS provider. Use this to provide audio feedback to the user.", s.workerPool.ttsClient.Name())),
 		mcp.WithString("text",
 			mcp.Required(),
 			mcp.Description("The text to convert to speech (max 4096 characters)"),
 		),
 		mcp.WithString("voice",
-			mcp.Description("Voice to use: alloy, echo, fable, onyx, nova, shimmer (default: alloy)"),
+			mcp.Description(fmt.Sprintf("Voice to use: %s (default: %s)", voiceList, s.workerPool.ttsClient.DefaultVoice())),
 		),
 	)
 
@@ -108,16 +118,17 @@ func (s *Server) handleSpeak(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError("text exceeds maximum length of 4096 characters"), nil
 	}
 
-	// Extract voice parameter (default to alloy)
-	voice := "alloy"
+	// Extract voice parameter (default to the provider default)
+	provider := s.workerPool.ttsClient
+	voice := provider.DefaultVoice()
 	if v, ok := request.Params.Arguments["voice"].(string); ok && v != "" {
 		voice = v
 	}
 
 	// Validate voice
-	if !tts.IsValidVoice(voice) {
+	if !provider.IsValidVoice(voice) {
 		logging.Warn("speak: invalid voice '%s'", voice)
-		return mcp.NewToolResultError(fmt.Sprintf("invalid voice '%s'. Valid voices: alloy, echo, fable, onyx, nova, shimmer", voice)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("invalid voice '%s'. Valid voices: %s", voice, strings.Join(provider.Voices(), ", "))), nil
 	}
 
 	logging.Info("speak: queueing job (voice=%s, text_len=%d, preview='%.50s...')", voice, len(text), text)
